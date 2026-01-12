@@ -1,40 +1,44 @@
-A simple AlpineQuest Trk2GPX converter
+# alp2gpx
 
-Alpine Quest is a very nice GPS app for outdoor activities
-https://www.alpinequest.net/
+AlpineQuest TRK ➜ GPX converter, ported from flipflip’s original Perl implementation to Python.
 
-Based on flifplip's apq2gpx (https://github.com/phkehl/apq2gpx).
-Many thanks!
+## Features
+- Parses AlpineQuest TRK v3 and v4 (metadata, segments, waypoints) and writes GPX 1.1.
+- Optional `pyproj` support for improved elevation (downloads geoid grid on first use).
+- CLI entrypoint `alp2gpx` with single-file and batch modes.
 
-This job is an attempt to port flipflip's original code
-in Perl to Python.
+## Installation
+- With uv (recommended): `uv sync` to install locally; add `--group pyproj` if you want `pyproj` included.
+- Plain pip: `pip install -e .` and optionally `pip install '.[pyproj]'` for elevation refinement.
 
-Special thanks to @dhicks (https://github.com/dhicks) for the TRK 4 parser and the I/O arguments
-Special thanks to @ydespond (https://github.com/ydespond) for the suggestions about to better calculate the elevation and the timestamp
-
-A special thanks to my friends 'Amici Alpinisti'. 
-The friends with whom i share my hiking adventures
-
-*** CHANGELOG ***
-03 Jan 2023 Added support for OM 3.8b / AQ 2.2.9b specification
-03 Jan 2023 Added support for pyproj (better elevation calc, see https://github.com/jachetto/alp2gpx/issues/2)
-25 May 2021 Added support for TRK version 4,  dhicks (https://github.com/dhicks)
-25 May 2021 Added Arguments for I/O, dhicks (https://github.com/dhicks)
-18 April 2020 1st beta release.  Only TRK supported
-
-
-**TIPS**
-###### Install pyproj if you want a better calculation of elevation ######
-
-```
-pip install pyproj
+## Usage
+Single file:
+```shell
+uv run alp2gpx path/to/input.trk -o path/to/output.gpx
+# output defaults to <input>.gpx if -o/--output is omitted
 ```
 
-
-###### Mass trk conversion  ######
-
-Use something like:
-
+Summary only (no GPX written):
+```shell
+uv run alp2gpx --summary-only path/to/input.trk
+# prints version and header info
 ```
-find . -type f -name '*.trk' -exec python3 alp2gpx.py "{}" \;
+
+Batch conversion and scanning:
+```shell
+# List versions/headers under a directory
+uv run alp2gpx --batch-dir data --summary-only
+
+# Convert all TRKs under a directory (recursive) into dist/converted
+uv run alp2gpx --batch-dir data --out-dir dist/converted
+
+# Limit how many files are processed
+uv run alp2gpx --batch-dir data --out-dir dist/converted --limit 2
 ```
+
+## Tips
+- Elevation: install `pyproj` (see above). The first run may download `us_nga_egm96_15.tif` for geoid corrections.
+- Legacy LDK parsing exists but GPX output currently targets TRK workflows.
+
+## Acknowledgements
+Based on flipflip’s apq2gpx; thanks to @dhicks for TRK v4 parsing and I/O args, and @ydespond for elevation/timestamp improvements. Special thanks to the AlpineQuest community and “Amici Alpinisti.” 
