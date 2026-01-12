@@ -5,3 +5,7 @@
 *.trk
 *.gpx
 
+__pycache__/
+__pypackages__/
+.venv
+.idea/

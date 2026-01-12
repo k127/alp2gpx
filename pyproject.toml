@@ -1,0 +1,25 @@
+[project]
+name = "alp2gpx"
+version = "1.0.0"
+description = "AlpineQuest to GPX Converter"
+readme = "README.md"
+authors = [
+    { name = "jachetto", email = "jachetto@gmail.com" },
+    { name = "Dan Hicks", email = "hicks.daniel.j@gmail.com" },
+    { name = "Philippe Kehl", email = "phkehl@gmail.com" },
+    { name = "Klaus Hartl", email = "k127@gmx.de" },
+]
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+alp2gpx = "alp2gpx:main"
+
+[build-system]
+requires = ["uv_build>=0.9.10,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+pyproj = [
+    "pyproj>=3.6.1",
+]

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 '''
 Licensed under the GNU GENERAL PUBLIC LICENSE (the "License");
 you may not use this file except in compliance with the License.
@@ -19,14 +18,12 @@ This job is an attempt to port flipflip's original code
 in Perl to Python.
 '''
 
-import sys
 from struct import *
 from datetime import datetime
 import base64
 import xml.etree.ElementTree as ET
 import io
 import os
-import argparse
 
 class alp2gpx(object):
     inputfile, outputfile = None, None
@@ -654,17 +651,4 @@ class alp2gpx(object):
         
         pass
         
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
 
-    parser.add_argument("input", help = "input file to convert (.trk, etc.)")
-    parser.add_argument("-o", "--output", 
-                        default = None,  # Handled after parser.parse_args()
-                        help = "output base name (default input file path and base name)")
-
-    args = parser.parse_args()
-    if args.output is None:
-        args.output = '%s.gpx' % os.path.splitext(args.input)[0]
-
-    
-    q = alp2gpx(args.input, args.output)
