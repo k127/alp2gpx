@@ -79,6 +79,11 @@ def main() -> None:
         default=None,
         help="Write a cProfile stats file for a single conversion.",
     )
+    parser.add_argument(
+        "--pretty",
+        action="store_true",
+        help="Pretty-print GPX output (indent XML) for readability.",
+    )
     parser.set_defaults(aq_extensions=False)
 
     args = parser.parse_args()
@@ -97,6 +102,7 @@ def main() -> None:
             summary_only=args.summary_only,
             limit=args.limit,
             include_extensions=args.aq_extensions,
+            pretty=args.pretty,
         )
         return
 
@@ -112,7 +118,7 @@ def main() -> None:
     if args.output is None:
         args.output = _default_output(args.input)
 
-    run_kwargs = dict(include_extensions=args.aq_extensions, progress=args.progress)
+    run_kwargs = dict(include_extensions=args.aq_extensions, progress=args.progress, pretty=args.pretty)
 
     if args.profile_out:
         args.profile_out.parent.mkdir(parents=True, exist_ok=True)

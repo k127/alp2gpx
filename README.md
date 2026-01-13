@@ -46,6 +46,7 @@ AlpineQuest extensions emit under `xmlns:aq="https://alpinequest.net/xmlschemas/
 Track segments also emit metadata (e.g., activity type) under `<trkseg><extensions><aq:segmentMeta>`.
 
 Progress: add `--progress` to print a simple trackpoint counter to stderr during parsing.
+Pretty-print GPX: add `--pretty` to indent XML output (handy for diffing).
 
 ## AlpineQuest GPX extensions
 - Enable with `--aq-extensions`; defaults to off for backward-compatible GPX.

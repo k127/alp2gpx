@@ -40,8 +40,9 @@ class alp2gpx(object):
     progress: bool = False
     progress_interval: int = 200
     _progress_count: int = 0
+    pretty: bool = False
 
-    def __init__(self, inputfile, outputfile, include_extensions: bool = False, progress: bool = False, progress_interval: int = 200):
+    def __init__(self, inputfile, outputfile, include_extensions: bool = False, progress: bool = False, progress_interval: int = 200, pretty: bool = False):
         self.inputfile = open(inputfile, "rb")
         self.fname = inputfile
 
@@ -49,6 +50,7 @@ class alp2gpx(object):
         self.include_extensions = include_extensions
         self.progress = progress
         self.progress_interval = progress_interval
+        self.pretty = pretty
 
         ext = os.path.splitext(inputfile)[1]
         if ext.lower() == '.trk':
@@ -637,17 +639,12 @@ class alp2gpx(object):
             ET.register_namespace("aq", AQ_NS)
 
         root = ET.Element('gpx', attrs)
-        root.text = '\n'
         tree = ET.ElementTree(root)
         metadata = ET.SubElement(root, 'metadata')
-        metadata.text = '\n'
-        metadata.tail = '\n'
         desc = ET.SubElement(metadata, 'desc')
         desc.text = name
-        desc.tail = '\n'
         link = ET.SubElement(metadata, 'link', href=PROJECT_LINK)
-        link.tail = '\n'
-        
+
         for wp in self.waypoints:
             loc: TrackPoint = wp['location']
             wpt = ET.SubElement(root, 'wpt', lat=f"{loc.lat}", lon=f"{loc.lon}")
@@ -659,40 +656,36 @@ class alp2gpx(object):
             
         for s in self.segments:
             trk = ET.SubElement(root, 'trk')
-            trk.text = '\n'
-            trk.tail = '\n'
             tname = ET.SubElement(trk, 'name')
             tname.text = name
-            tname.tail = '\n'
 
             trkseg = ET.SubElement(trk, 'trkseg')
-            trkseg.text = '\n'
-            trkseg.tail = '\n'
             if self.include_extensions and s.meta:
                 seg_ext = ET.SubElement(trkseg, 'extensions')
                 seg_meta = ET.SubElement(seg_ext, f"{{{AQ_NS}}}segmentMeta")
                 for key, value in s.meta.items():
                     item = ET.SubElement(seg_meta, f"{{{AQ_NS}}}item", name=str(key))
                     item.text = f"{value}"
-                    item.tail = '\n'
 
             for p in s.points:
                 trkpt = ET.SubElement(trkseg, 'trkpt', lat=f"{p.lat}", lon=f"{p.lon}")
-                trkpt.text = '\n'
-                trkpt.tail = '\n'
                 if p.elevation is not None:
                     node = ET.SubElement(trkpt, 'ele')
                     node.text = f"{p.elevation}"
-                    node.tail = '\n'
                 time_str = self._format_time(p.timestamp)
                 if time_str:
                     node = ET.SubElement(trkpt, 'time')
                     node.text = time_str
-                    node.tail = '\n'
                 extensions = self._build_extensions(p)
                 if extensions is not None:
                     trkpt.append(extensions)
-                
+
+        if self.pretty:
+            try:
+                ET.indent(tree, space="  ", level=0)
+            except AttributeError:
+                pass
+
         tree.write(self.outputfile, encoding='utf-8', xml_declaration=True)
         
         
