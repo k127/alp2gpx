@@ -43,7 +43,7 @@ def batch_convert(
         out_path = out_dir / f"{path.stem}.gpx"
         result = alp2gpx(str(path), str(out_path), include_extensions=include_extensions)
         segments = len(result.segments or [])
-        points = sum(len(seg) for seg in result.segments or [])
+        points = sum(len(seg.points) for seg in result.segments or [])
         print(f"     -> {out_path} (segments={segments}, points={points}, version={result.fileVersion})")
         if limit and idx >= limit:
             break

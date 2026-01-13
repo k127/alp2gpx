@@ -43,6 +43,7 @@ uv run alp2gpx --batch-dir path/to/tracks --out-dir dist/converted --limit 2
 ```
 
 AlpineQuest extensions emit under `xmlns:aq="https://alpinequest.net/xmlschemas/gpx/trackpoint/1"` and include fields like accuracy, satellites (gps/glo/bds/gal), battery, network signal/type, and vertical accuracy when present.
+Track segments also emit metadata (e.g., activity type) under `<trkseg><extensions><aq:segmentMeta>`.
 
 Progress: add `--progress` to print a simple trackpoint counter to stderr during parsing.
 

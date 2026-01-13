@@ -27,7 +27,7 @@ import os
 import sys
 from typing import Optional
 
-from .trackpoint import AQ_NS, TrackPoint, decode_network, parse_satellites
+from .trackpoint import AQ_NS, Segment, TrackPoint, decode_network, parse_satellites
 
 PROJECT_LINK = "https://github.com/k127/alp2gpx"
 
@@ -324,6 +324,9 @@ class alp2gpx(object):
     def _get_segment(self, segmentVersion):
         if segmentVersion < 3:
             self._get_int()
+        meta = {}
+        if segmentVersion < 3:
+            self._get_int()
         else:
             meta = self._get_metadata(segmentVersion)
             if segmentVersion == 4:
@@ -337,7 +340,7 @@ class alp2gpx(object):
             location = self._get_location(segmentVersion)
             self._progress_tick()
             result.append(location)
-        return result
+        return Segment(meta=meta, points=result)
             
     def _get_segments(self, segmentVersion):
         num_segments = self._get_int()
@@ -665,7 +668,15 @@ class alp2gpx(object):
             trkseg = ET.SubElement(trk, 'trkseg')
             trkseg.text = '\n'
             trkseg.tail = '\n'
-            for p in s:
+            if self.include_extensions and s.meta:
+                seg_ext = ET.SubElement(trkseg, 'extensions')
+                seg_meta = ET.SubElement(seg_ext, f"{{{AQ_NS}}}segmentMeta")
+                for key, value in s.meta.items():
+                    item = ET.SubElement(seg_meta, f"{{{AQ_NS}}}item", name=str(key))
+                    item.text = f"{value}"
+                    item.tail = '\n'
+
+            for p in s.points:
                 trkpt = ET.SubElement(trkseg, 'trkpt', lat=f"{p.lat}", lon=f"{p.lon}")
                 trkpt.text = '\n'
                 trkpt.tail = '\n'

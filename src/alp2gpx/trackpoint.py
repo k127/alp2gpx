@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 AQ_NS = "https://alpinequest.net/xmlschemas/gpx/trackpoint/1"
 
@@ -51,6 +51,12 @@ class TrackPoint:
                 self.elevation_dem,
             ]
         )
+
+
+@dataclass
+class Segment:
+    meta: dict
+    points: List[TrackPoint]
 
 
 def parse_satellites(raw: bytes) -> Tuple[int | None, int | None, int | None, int | None]:
