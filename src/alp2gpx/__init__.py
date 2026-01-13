@@ -52,6 +52,21 @@ def main() -> None:
         default=None,
         help="Optional limit when running batch conversion.",
     )
+    parser.add_argument(
+        "-x",
+        "--aq-extensions",
+        dest="aq_extensions",
+        action="store_true",
+        help="Emit AlpineQuest trackpoint metadata as GPX extensions.",
+    )
+    parser.add_argument(
+        "-X",
+        "--no-aq-extensions",
+        dest="aq_extensions",
+        action="store_false",
+        help="Disable AlpineQuest GPX extensions (default).",
+    )
+    parser.set_defaults(aq_extensions=False)
 
     args = parser.parse_args()
     _require_input(args.input, args.batch_dir)
@@ -68,6 +83,7 @@ def main() -> None:
             out_dir=args.out_dir,
             summary_only=args.summary_only,
             limit=args.limit,
+            include_extensions=args.aq_extensions,
         )
         return
 
@@ -80,4 +96,4 @@ def main() -> None:
     if args.output is None:
         args.output = _default_output(args.input)
 
-    alp2gpx(args.input, args.output)
+    alp2gpx(args.input, args.output, include_extensions=args.aq_extensions)

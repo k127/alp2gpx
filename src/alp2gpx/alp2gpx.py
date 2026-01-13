@@ -24,19 +24,26 @@ import base64
 import xml.etree.ElementTree as ET
 import io
 import os
+from typing import Optional
+
+from .trackpoint import AQ_NS, TrackPoint, decode_network, parse_satellites
+
+PROJECT_LINK = "https://github.com/k127/alp2gpx"
 
 class alp2gpx(object):
     inputfile, outputfile = None, None
     fname = None
     fileVersion, headerSize = None, None
-    metadata, waypoints, segments = None, None, None 
-    
-    def __init__(self, inputfile, outputfile):
+    metadata, waypoints, segments = None, None, None
+    include_extensions: bool = False
+
+    def __init__(self, inputfile, outputfile, include_extensions: bool = False):
         self.inputfile = open(inputfile, "rb")
         self.fname = inputfile
-       
+
         self.outputfile = outputfile
-        
+        self.include_extensions = include_extensions
+
         ext = os.path.splitext(inputfile)[1]
         if ext.lower() == '.trk':
             self.parse_trk()
@@ -44,7 +51,7 @@ class alp2gpx(object):
             self.parse_ldk()
         else:
             print('File not supported yet')
-        
+
         print(self.fname, self.fileVersion)
         
     def _get_int(self):
@@ -179,15 +186,31 @@ class alp2gpx(object):
         size = self._get_int()
         lon = self._get_coordinate()
         lat = self._get_coordinate()
-        
-        
-        alt = 0
-        if segmentVersion <= 3: 
+
+
+        alt = None
+        ts = None
+        acc = None
+        bar = None
+        vertical_accuracy = None
+        sat_gps = sat_glo = sat_bds = sat_gal = None
+        battery = None
+        network_code = None
+        network_signal_raw = None
+        network_type = None
+        network_percent = None
+        network_dbm = None
+        inclination = None
+        magnetic_field = None
+        elevation_wgs84 = None
+        elevation_dem = None
+
+        if segmentVersion <= 3:
             alt = self._get_height(lon, lat)
             ts = self._get_timestamp()
-         
+
             acc,bar = None, None
-            
+
             if size > 20:
                 acc = self._get_accuracy()
             if size > 24:
@@ -199,7 +222,7 @@ class alp2gpx(object):
             while size > 0:
                 # read name of data (e=elevation, ...)
                 name = self._get_string(1)
-                              
+
                 if name == "e":
                     # elevation
                     alt = self._get_height(lon, lat)
@@ -227,30 +250,62 @@ class alp2gpx(object):
                 if name == "n":
                     #cell network info: cell type in byte 1 (generation in tens, protocol in units), signal strength inbyte 2 (from 1=BAD to 127=GOOD) (added in OM 3.8b / AQ 2.2.9b)
                     ct = self.inputfile.read(2)
+                    network_code = ct[0] if len(ct) > 0 else None
+                    network_signal_raw = ct[1] if len(ct) > 1 else None
+                    network_type, network_percent, network_dbm = decode_network(network_code, network_signal_raw)
                     size = size - 3
                     continue
                 if name == "b":
                     #battery level (0-100%) (added in OM 3.8b / AQ 2.2.9b)
                     bt = self.inputfile.read(1)
-                    #print("bt", int.from_bytes(bt, "big"))
+                    battery = int.from_bytes(bt, "big")
                     size = size - 2
                     continue
                 if name == "s":
                     #satellites in use per constellation (UNKNOWN, GPS, SBAS, GLONASS, QZSS, BEIDOU, GALILEO, IRNSS) (added in OM 3.8b / AQ 2.2.9b)
                     sat =  self.inputfile.read(8)
+                    sat_gps, sat_glo, sat_bds, sat_gal = parse_satellites(sat)
                     size = size - 9
                     continue
                 if name == "v":
                     #vertical accuracy (meters*1e2) (added in OM 3.10b / AQ 2.3.2c)
                     va = self._get_int()
+                    vertical_accuracy = va * 1e-2
                     size = size - 5
                     continue
+                else:
+                    # consume remaining payload to avoid infinite loops on unknown keys
+                    remaining = max(0, size - 1)
+                    if remaining:
+                        self.inputfile.read(remaining)
+                    size = 0
         else:
             print("Location format error")
             exit()
-            
-        result = { 'lat': lat, 'lon': lon, 'alt': alt, 'ts': ts, 'acc': acc, 'bar': bar}
-        return result
+
+        return TrackPoint(
+            lat=lat,
+            lon=lon,
+            elevation=alt,
+            timestamp=ts,
+            accuracy=acc,
+            pressure=bar,
+            vertical_accuracy=vertical_accuracy,
+            sat_gps=sat_gps,
+            sat_glo=sat_glo,
+            sat_bds=sat_bds,
+            sat_gal=sat_gal,
+            battery=battery,
+            network_type=network_type,
+            network_signal_percent=network_percent,
+            network_signal_dbm=network_dbm,
+            network_code=network_code,
+            network_signal_raw=network_signal_raw,
+            inclination=inclination,
+            magnetic_field=magnetic_field,
+            elevation_wgs84=elevation_wgs84,
+            elevation_dem=elevation_dem,
+        )
     
     
     def _get_segment(self, segmentVersion):
@@ -463,7 +518,62 @@ class alp2gpx(object):
             file_version = 4
         header_size  = self._get_int()          
         return (file_version, header_size);
-    
+
+    def _format_time(self, timestamp: Optional[float]) -> Optional[str]:
+        if timestamp is None:
+            return None
+        try:
+            d = datetime.utcfromtimestamp(timestamp)
+        except (OSError, OverflowError, TypeError, ValueError):
+            return None
+        return d.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def _build_extensions(self, trkpoint: TrackPoint):
+        if not self.include_extensions or not trkpoint.has_extensions():
+            return None
+
+        extensions = ET.Element('extensions')
+
+        if trkpoint.accuracy is not None:
+            ET.SubElement(extensions, f"{{{AQ_NS}}}accuracy").text = f"{trkpoint.accuracy}"
+        if trkpoint.vertical_accuracy is not None:
+            ET.SubElement(extensions, f"{{{AQ_NS}}}accuracyVertical").text = f"{trkpoint.vertical_accuracy}"
+        if trkpoint.pressure is not None:
+            ET.SubElement(extensions, f"{{{AQ_NS}}}pressure").text = f"{trkpoint.pressure}"
+        if trkpoint.battery is not None:
+            ET.SubElement(extensions, f"{{{AQ_NS}}}battery").text = f"{trkpoint.battery}"
+        if trkpoint.elevation_wgs84 is not None:
+            ET.SubElement(extensions, f"{{{AQ_NS}}}elevationWgs84").text = f"{trkpoint.elevation_wgs84}"
+        if trkpoint.elevation_dem is not None:
+            ET.SubElement(extensions, f"{{{AQ_NS}}}elevationDem").text = f"{trkpoint.elevation_dem}"
+
+        if any(v is not None for v in [trkpoint.sat_gps, trkpoint.sat_glo, trkpoint.sat_bds, trkpoint.sat_gal]):
+            satellites = ET.SubElement(extensions, f"{{{AQ_NS}}}satellites")
+            if trkpoint.sat_gps is not None:
+                ET.SubElement(satellites, f"{{{AQ_NS}}}gps").text = f"{trkpoint.sat_gps}"
+            if trkpoint.sat_glo is not None:
+                ET.SubElement(satellites, f"{{{AQ_NS}}}glo").text = f"{trkpoint.sat_glo}"
+            if trkpoint.sat_bds is not None:
+                ET.SubElement(satellites, f"{{{AQ_NS}}}bds").text = f"{trkpoint.sat_bds}"
+            if trkpoint.sat_gal is not None:
+                ET.SubElement(satellites, f"{{{AQ_NS}}}gal").text = f"{trkpoint.sat_gal}"
+
+        if any(v is not None for v in [trkpoint.network_type, trkpoint.network_signal_percent, trkpoint.network_signal_dbm]):
+            network = ET.SubElement(extensions, f"{{{AQ_NS}}}network")
+            if trkpoint.network_signal_percent is not None:
+                ET.SubElement(network, f"{{{AQ_NS}}}signalPercent").text = f"{trkpoint.network_signal_percent}"
+            if trkpoint.network_signal_dbm is not None:
+                ET.SubElement(network, f"{{{AQ_NS}}}signalDbm").text = f"{trkpoint.network_signal_dbm}"
+            if trkpoint.network_type is not None:
+                ET.SubElement(network, f"{{{AQ_NS}}}type").text = trkpoint.network_type
+
+        if trkpoint.inclination is not None:
+            ET.SubElement(extensions, f"{{{AQ_NS}}}inclination").text = f"{trkpoint.inclination}"
+        if trkpoint.magnetic_field is not None:
+            ET.SubElement(extensions, f"{{{AQ_NS}}}magneticField").text = f"{trkpoint.magnetic_field}"
+
+        return extensions if len(extensions) else None
+
     def write_xml(self):
         '''
         <?xml version="1.0" encoding="UTF-8"?>
@@ -505,7 +615,11 @@ class alp2gpx(object):
             
         # print('Name:', name)
         
-        root = ET.Element('gpx', xmlns="http://www.topografix.com/GPX/1/1", version = '1.1', creator="Alp2gpx" )
+        attrs = {"xmlns": "http://www.topografix.com/GPX/1/1", "version": "1.1", "creator": "Alp2gpx"}
+        if self.include_extensions:
+            ET.register_namespace("aq", AQ_NS)
+
+        root = ET.Element('gpx', attrs)
         root.text = '\n'
         tree = ET.ElementTree(root)
         metadata = ET.SubElement(root, 'metadata')
@@ -514,13 +628,15 @@ class alp2gpx(object):
         desc = ET.SubElement(metadata, 'desc')
         desc.text = name
         desc.tail = '\n'
-        link = ET.SubElement(metadata, 'link', href='https://github.com/jachetto/alp2gpx')
+        link = ET.SubElement(metadata, 'link', href=PROJECT_LINK)
         link.tail = '\n'
         
         for wp in self.waypoints:
-            wpt = ET.SubElement(root, 'wpt', lat = '%s' % wp['location']['lat'], lon = '%s' % wp['location']['lon'] )
-            node = ET.SubElement(wpt, 'ele')
-            node.text = '%s' % wp['location']['alt']
+            loc: TrackPoint = wp['location']
+            wpt = ET.SubElement(root, 'wpt', lat=f"{loc.lat}", lon=f"{loc.lon}")
+            if loc.elevation is not None:
+                node = ET.SubElement(wpt, 'ele')
+                node.text = f"{loc.elevation}"
             node = ET.SubElement(wpt, 'name')
             node.text = wp['meta']['name']
             
@@ -536,17 +652,21 @@ class alp2gpx(object):
             trkseg.text = '\n'
             trkseg.tail = '\n'
             for p in s:
-                trkpt = ET.SubElement(trkseg, 'trkpt', lat = '%s' % p['lat'], lon = '%s' % p['lon'] )
+                trkpt = ET.SubElement(trkseg, 'trkpt', lat=f"{p.lat}", lon=f"{p.lon}")
                 trkpt.text = '\n'
                 trkpt.tail = '\n'
-                node = ET.SubElement(trkpt, 'ele')
-                node.text = '%s' % p['alt']                
-                node.tail = '\n'
-                d = datetime.utcfromtimestamp(int(p['ts']))
-                tz = d.strftime("%Y-%m-%dT%H:%M:%SZ")
-                node = ET.SubElement(trkpt, 'time')
-                node.text = tz
-                node.tail = '\n'
+                if p.elevation is not None:
+                    node = ET.SubElement(trkpt, 'ele')
+                    node.text = f"{p.elevation}"
+                    node.tail = '\n'
+                time_str = self._format_time(p.timestamp)
+                if time_str:
+                    node = ET.SubElement(trkpt, 'time')
+                    node.text = time_str
+                    node.tail = '\n'
+                extensions = self._build_extensions(p)
+                if extensions is not None:
+                    trkpt.append(extensions)
                 
         tree.write(self.outputfile, encoding='utf-8', xml_declaration=True)
         
