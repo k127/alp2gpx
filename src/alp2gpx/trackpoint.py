@@ -96,3 +96,4 @@ def decode_network(code: Optional[int], signal: Optional[int]) -> Tuple[Optional
         dbm = -113 + 2 * signal
 
     return network_type, percent, dbm
+

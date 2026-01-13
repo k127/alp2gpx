@@ -26,8 +26,10 @@ import io
 import os
 import sys
 from typing import Optional
+from math import isfinite
 
 from .trackpoint import AQ_NS, Segment, TrackPoint, decode_network, parse_satellites
+from .contours import build_accuracy_contours
 
 PROJECT_LINK = "https://github.com/k127/alp2gpx"
 
@@ -42,8 +44,9 @@ class alp2gpx(object):
     _progress_count: int = 0
     pretty: bool = False
     verbose: int = 0
+    accuracy_contours: bool = False
 
-    def __init__(self, inputfile, outputfile, include_extensions: bool = False, progress: bool = False, progress_interval: int = 200, pretty: bool = False, verbose: int = 0):
+    def __init__(self, inputfile, outputfile, include_extensions: bool = False, progress: bool = False, progress_interval: int = 200, pretty: bool = False, verbose: int = 0, accuracy_contours: bool = False):
         self.inputfile = open(inputfile, "rb")
         self.fname = inputfile
 
@@ -53,6 +56,9 @@ class alp2gpx(object):
         self.progress_interval = progress_interval
         self.pretty = pretty
         self.verbose = verbose
+        self.accuracy_contours = accuracy_contours
+        self.accuracy_left = []
+        self.accuracy_right = []
 
         ext = os.path.splitext(inputfile)[1]
         if ext.lower() == '.trk':
@@ -70,6 +76,14 @@ class alp2gpx(object):
         self._progress_count += 1
         if self._progress_count % self.progress_interval == 0:
             print(f"… {self._progress_count} trackpoints", file=sys.stderr)
+
+    def _build_contours(self, segments):
+        self.accuracy_left = []
+        self.accuracy_right = []
+        for seg in segments:
+            left, right = build_accuracy_contours(seg.points)
+            self.accuracy_left.append(left)
+            self.accuracy_right.append(right)
 
     def _print_status(self):
         parts = [f"{self.fname}", f"v{self.fileVersion}"]
@@ -365,6 +379,8 @@ class alp2gpx(object):
         for s in range(num_segments):
             segment = self._get_segment(segmentVersion)
             results.append(segment)
+        if self.accuracy_contours:
+            self._build_contours(results)
         return results
             
             
@@ -694,6 +710,23 @@ class alp2gpx(object):
                 if extensions is not None:
                     trkpt.append(extensions)
 
+        if self.accuracy_contours and self.accuracy_left and self.accuracy_right:
+            for label, segments in (("accuracy-left", self.accuracy_left), ("accuracy-right", self.accuracy_right)):
+                trk = ET.SubElement(root, 'trk')
+                tname = ET.SubElement(trk, 'name')
+                tname.text = f"{name} ({label})"
+                for seg_pts in segments:
+                    trkseg = ET.SubElement(trk, 'trkseg')
+                    for p in seg_pts:
+                        trkpt = ET.SubElement(trkseg, 'trkpt', lat=f"{p.lat}", lon=f"{p.lon}")
+                        if p.elevation is not None:
+                            node = ET.SubElement(trkpt, 'ele')
+                            node.text = f"{p.elevation}"
+                        time_str = self._format_time(p.timestamp)
+                        if time_str:
+                            node = ET.SubElement(trkpt, 'time')
+                            node.text = time_str
+                
         if self.pretty:
             try:
                 ET.indent(tree, space="  ", level=0)

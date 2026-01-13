@@ -82,6 +82,7 @@ def batch_convert(
     include_extensions: bool = False,
     pretty: bool = False,
     verbose: int = 0,
+    accuracy_contours: bool = False,
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     for idx, path in enumerate(tracks, start=1):
@@ -100,7 +101,7 @@ def batch_convert(
                 continue
 
         out_path = out_dir / f"{path.stem}.gpx"
-        result = alp2gpx(str(path), str(out_path), include_extensions=include_extensions, pretty=pretty, verbose=verbose)
+        result = alp2gpx(str(path), str(out_path), include_extensions=include_extensions, pretty=pretty, verbose=verbose, accuracy_contours=accuracy_contours)
         segments = len(result.segments or [])
         points = sum(len(seg.points) for seg in result.segments or [])
         print(f"     -> {out_path} (segments={segments}, points={points}, version={result.fileVersion})")
