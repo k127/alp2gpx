@@ -24,6 +24,7 @@ import base64
 import xml.etree.ElementTree as ET
 import io
 import os
+import sys
 from typing import Optional
 
 from .trackpoint import AQ_NS, TrackPoint, decode_network, parse_satellites
@@ -36,13 +37,18 @@ class alp2gpx(object):
     fileVersion, headerSize = None, None
     metadata, waypoints, segments = None, None, None
     include_extensions: bool = False
+    progress: bool = False
+    progress_interval: int = 200
+    _progress_count: int = 0
 
-    def __init__(self, inputfile, outputfile, include_extensions: bool = False):
+    def __init__(self, inputfile, outputfile, include_extensions: bool = False, progress: bool = False, progress_interval: int = 200):
         self.inputfile = open(inputfile, "rb")
         self.fname = inputfile
 
         self.outputfile = outputfile
         self.include_extensions = include_extensions
+        self.progress = progress
+        self.progress_interval = progress_interval
 
         ext = os.path.splitext(inputfile)[1]
         if ext.lower() == '.trk':
@@ -53,6 +59,13 @@ class alp2gpx(object):
             print('File not supported yet')
 
         print(self.fname, self.fileVersion)
+
+    def _progress_tick(self):
+        if not self.progress:
+            return
+        self._progress_count += 1
+        if self._progress_count % self.progress_interval == 0:
+            print(f"… {self._progress_count} trackpoints", file=sys.stderr)
         
     def _get_int(self):
         result = self.inputfile.read(4)
@@ -322,6 +335,7 @@ class alp2gpx(object):
         result = []
         for n in range(nlocations):
             location = self._get_location(segmentVersion)
+            self._progress_tick()
             result.append(location)
         return result
             

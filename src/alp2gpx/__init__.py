@@ -1,5 +1,7 @@
 import argparse
 import os
+import sys
+import cProfile
 from pathlib import Path
 from typing import Optional
 
@@ -66,6 +68,17 @@ def main() -> None:
         action="store_false",
         help="Disable AlpineQuest GPX extensions (default).",
     )
+    parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="Print a simple progress ticker while reading trackpoints.",
+    )
+    parser.add_argument(
+        "--profile-out",
+        type=Path,
+        default=None,
+        help="Write a cProfile stats file for a single conversion.",
+    )
     parser.set_defaults(aq_extensions=False)
 
     args = parser.parse_args()
@@ -87,6 +100,9 @@ def main() -> None:
         )
         return
 
+    if args.profile_out and args.batch_dir:
+        raise SystemExit("--profile-out is only supported for single-file conversions.")
+
     # Single-file workflow (backwards compatible).
     if args.summary_only:
         version, header = read_header(Path(args.input))
@@ -96,4 +112,16 @@ def main() -> None:
     if args.output is None:
         args.output = _default_output(args.input)
 
-    alp2gpx(args.input, args.output, include_extensions=args.aq_extensions)
+    run_kwargs = dict(include_extensions=args.aq_extensions, progress=args.progress)
+
+    if args.profile_out:
+        args.profile_out.parent.mkdir(parents=True, exist_ok=True)
+        cProfile.runctx(
+            "alp2gpx(args.input, args.output, **run_kwargs)",
+            globals(),
+            locals(),
+            filename=str(args.profile_out),
+        )
+        print(f"Profile written to {args.profile_out}", file=sys.stderr)
+    else:
+        alp2gpx(args.input, args.output, **run_kwargs)
