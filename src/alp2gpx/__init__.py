@@ -84,6 +84,13 @@ def main() -> None:
         action="store_true",
         help="Pretty-print GPX output (indent XML) for readability.",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
+        help="Increase status detail on stdout (repeat for more detail).",
+    )
     parser.set_defaults(aq_extensions=False)
 
     args = parser.parse_args()
@@ -103,6 +110,7 @@ def main() -> None:
             limit=args.limit,
             include_extensions=args.aq_extensions,
             pretty=args.pretty,
+            verbose=args.verbose,
         )
         return
 
@@ -112,6 +120,12 @@ def main() -> None:
     # Single-file workflow (backwards compatible).
     if args.summary_only:
         version, header = read_header(Path(args.input))
+        if args.verbose > 0 and version and version <= 3:
+            from .ops import quick_stats_v3, format_summary_line
+
+            stats = quick_stats_v3(Path(args.input))
+            print(format_summary_line(Path(args.input), stats, args.verbose))
+            return
         print(f"{args.input}\tversion={version}\theader={header}")
         return
 
@@ -123,11 +137,11 @@ def main() -> None:
     if args.profile_out:
         args.profile_out.parent.mkdir(parents=True, exist_ok=True)
         cProfile.runctx(
-            "alp2gpx(args.input, args.output, **run_kwargs)",
+            "alp2gpx(args.input, args.output, verbose=args.verbose, **run_kwargs)",
             globals(),
             locals(),
             filename=str(args.profile_out),
         )
         print(f"Profile written to {args.profile_out}", file=sys.stderr)
     else:
-        alp2gpx(args.input, args.output, **run_kwargs)
+        alp2gpx(args.input, args.output, verbose=args.verbose, **run_kwargs)

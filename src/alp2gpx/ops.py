@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from struct import unpack
 from typing import Iterable, Tuple
@@ -24,6 +25,55 @@ def read_header(path: Path) -> Tuple[int | None, int | None]:
         return version, header
 
 
+def quick_stats_v3(path: Path) -> dict:
+    with path.open("rb") as f:
+        f.seek(0)
+        version, header = unpack(">ll", f.read(8))
+        f.seek(8)
+        nloc = unpack(">l", f.read(4))[0]
+        nseg = unpack(">l", f.read(4))[0]
+        nwpt = unpack(">l", f.read(4))[0]
+        lon = unpack(">l", f.read(4))[0] * 1e-7
+        lat = unpack(">l", f.read(4))[0] * 1e-7
+        ts_ms = unpack(">q", f.read(8))[0]
+        f.seek(36)
+        total_len = unpack(">d", f.read(8))[0]
+        total_len_3d = unpack(">d", f.read(8))[0]
+        gain = unpack(">d", f.read(8))[0]
+        duration = unpack(">q", f.read(8))[0]
+    return {
+        "version": version,
+        "header": header,
+        "loc": nloc,
+        "seg": nseg,
+        "wpt": nwpt,
+        "lon0": lon,
+        "lat0": lat,
+        "ts0": ts_ms / 1000.0,
+        "length": total_len,
+        "length3d": total_len_3d,
+        "gain": gain,
+        "duration": duration,
+    }
+
+
+def format_summary_line(path: Path, stats: dict, verbose: int) -> str:
+    parts = [f"{path}", f"version={stats['version']}", f"header={stats['header']}"]
+    if verbose >= 1:
+        parts.append(f"loc={stats['loc']}")
+        parts.append(f"seg={stats['seg']}")
+        parts.append(f"wpt={stats['wpt']}")
+    if verbose >= 2:
+        parts.append(f"len={stats['length']:.1f}m")
+        parts.append(f"gain={stats['gain']:.1f}m")
+        parts.append(f"dur={stats['duration']}s")
+    if verbose >= 3:
+        parts.append(f"len3d={stats['length3d']:.1f}m")
+        parts.append(f"lon0={stats['lon0']:.6f}")
+        parts.append(f"lat0={stats['lat0']:.6f}")
+    return " ".join(parts)
+
+
 def batch_convert(
     tracks: Iterable[Path],
     out_dir: Path,
@@ -31,18 +81,26 @@ def batch_convert(
     limit: int | None = None,
     include_extensions: bool = False,
     pretty: bool = False,
+    verbose: int = 0,
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     for idx, path in enumerate(tracks, start=1):
         version, header = read_header(path)
-        print(f"[{idx:02}] {path}\tversion={version}\theader={header}")
-        if summary_only:
+        if summary_only and verbose > 0 and version and version <= 3:
+            stats = quick_stats_v3(path)
+            print(format_summary_line(path, stats, verbose))
             if limit and idx >= limit:
                 break
             continue
+        else:
+            print(f"[{idx:02}] {path}\tversion={version}\theader={header}")
+            if summary_only:
+                if limit and idx >= limit:
+                    break
+                continue
 
         out_path = out_dir / f"{path.stem}.gpx"
-        result = alp2gpx(str(path), str(out_path), include_extensions=include_extensions, pretty=pretty)
+        result = alp2gpx(str(path), str(out_path), include_extensions=include_extensions, pretty=pretty, verbose=verbose)
         segments = len(result.segments or [])
         points = sum(len(seg.points) for seg in result.segments or [])
         print(f"     -> {out_path} (segments={segments}, points={points}, version={result.fileVersion})")

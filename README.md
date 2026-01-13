@@ -47,6 +47,7 @@ Track segments also emit metadata (e.g., activity type) under `<trkseg><extensio
 
 Progress: add `--progress` to print a simple trackpoint counter to stderr during parsing.
 Pretty-print GPX: add `--pretty` to indent XML output (handy for diffing).
+Verbosity: `-v` prints loc/seg/wpt counts; `-vv` also adds length/elevation gain/duration in the status line.
 
 ## AlpineQuest GPX extensions
 - Enable with `--aq-extensions`; defaults to off for backward-compatible GPX.

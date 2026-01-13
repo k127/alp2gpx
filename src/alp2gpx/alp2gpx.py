@@ -41,8 +41,9 @@ class alp2gpx(object):
     progress_interval: int = 200
     _progress_count: int = 0
     pretty: bool = False
+    verbose: int = 0
 
-    def __init__(self, inputfile, outputfile, include_extensions: bool = False, progress: bool = False, progress_interval: int = 200, pretty: bool = False):
+    def __init__(self, inputfile, outputfile, include_extensions: bool = False, progress: bool = False, progress_interval: int = 200, pretty: bool = False, verbose: int = 0):
         self.inputfile = open(inputfile, "rb")
         self.fname = inputfile
 
@@ -51,6 +52,7 @@ class alp2gpx(object):
         self.progress = progress
         self.progress_interval = progress_interval
         self.pretty = pretty
+        self.verbose = verbose
 
         ext = os.path.splitext(inputfile)[1]
         if ext.lower() == '.trk':
@@ -60,7 +62,7 @@ class alp2gpx(object):
         else:
             print('File not supported yet')
 
-        print(self.fname, self.fileVersion)
+        self._print_status()
 
     def _progress_tick(self):
         if not self.progress:
@@ -68,6 +70,18 @@ class alp2gpx(object):
         self._progress_count += 1
         if self._progress_count % self.progress_interval == 0:
             print(f"… {self._progress_count} trackpoints", file=sys.stderr)
+
+    def _print_status(self):
+        parts = [f"{self.fname}", f"v{self.fileVersion}"]
+        if self.verbose >= 1:
+            parts.append(f"loc={self.number_of_locations()}")
+            parts.append(f"seg={self.number_of_segments()}")
+            parts.append(f"wpt={self.number_of_waypoints()}")
+        if self.verbose >= 2:
+            parts.append(f"len={self.total_track_length():.1f}m")
+            parts.append(f"gain={self.total_track_elevation_gain():.1f}m")
+            parts.append(f"duration={self.total_track_time()}s")
+        print(" ".join(parts))
         
     def _get_int(self):
         result = self.inputfile.read(4)
