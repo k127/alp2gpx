@@ -75,8 +75,8 @@ def decode_network(code: Optional[int], signal: Optional[int]) -> Tuple[Optional
     if code is not None:
         generation = code // 10
         protocol = code % 10
-        generation_labels = {0: "NONE", 1: "2G", 2: "3G", 3: "4G", 4: "5G"}
-        protocol_labels = {0: "", 1: "GSM", 2: "CDMA", 3: "UMTS", 4: "LTE", 5: "NR"}
+        generation_labels = {0: "NONE", 1: "2G", 2: "3G", 3: "4G", 4: "4G", 5: "5G"}
+        protocol_labels = {0: "", 1: "LTE", 2: "CDMA", 3: "UMTS", 4: "LTE", 5: "NR"}
         gen = generation_labels.get(generation, f"{generation}G")
         proto = protocol_labels.get(protocol, "")
         if gen == "NONE":
