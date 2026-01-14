@@ -196,8 +196,8 @@ class alp2gpx(object):
             pass        
         return result
     
-    def _get_accuracy(self):
-        return self._get_int()
+    def _get_accuracy(self, scale: float = 1.0):
+        return self._get_int() * scale
     
     def _get_pressure(self):
         result = self._get_int()
@@ -279,8 +279,8 @@ class alp2gpx(object):
                     #print("Time" , ts)
                     continue
                 if name == "a":
-                    # accuracy
-                    acc = self._get_accuracy()
+                    # accuracy (meters*1e2)
+                    acc = self._get_accuracy(scale=1e-2)
                     size = size - 5
                     #print("accuracy" , acc)
                     continue
