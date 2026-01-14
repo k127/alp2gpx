@@ -87,13 +87,12 @@ def decode_network(code: Optional[int], signal: Optional[int]) -> Tuple[Optional
             network_type = gen
 
     percent = None
-    if signal is not None:
-        percent = max(0, min(100, round((signal - 1) / 126 * 100)))
-
     dbm = None
-    if signal is not None:
-        # Heuristic often used for ASU→dBm. Keeps the data visible without AlpineQuest docs.
-        dbm = -113 + 2 * signal
+    if signal is not None:  # TODO this is still not the correct value
+        # Map 1..127 to 0..100 linearly (1 = 0%, 127 ≈ 100%)
+        percent = max(0, min(100, round((signal - 1) * (100 / 126))))
+        # Map 1..127 to approx -140..-44 dBm linearly, round to 1 decimal
+        dbm = round(-140 + (signal - 1) * (96 / 126), 1)
 
     return network_type, percent, dbm
 
