@@ -316,6 +316,18 @@ class alp2gpx(object):
                     vertical_accuracy = va * 1e-2
                     size = size - 5
                     continue
+                if name == "i":  # TODO test
+                    # inclination (degrees*1e1)
+                    inc_raw = self._get_int()
+                    inclination = inc_raw * 1e-1
+                    size = size - 5
+                    continue
+                if name == "m":  # TODO test
+                    # magnetic field (nT)
+                    mag_raw = self._get_int()
+                    magnetic_field = mag_raw
+                    size = size - 5
+                    continue
                 else:
                     # consume remaining payload to avoid infinite loops on unknown keys
                     remaining = max(0, size - 1)
