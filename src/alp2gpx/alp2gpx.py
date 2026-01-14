@@ -18,18 +18,21 @@ This job is an attempt to port flipflip's original code
 in Perl to Python.
 '''
 
-from struct import *
-from datetime import datetime
 import base64
+import json
 import xml.etree.ElementTree as ET
 import io
 import os
+from pathlib import Path
+from datetime import datetime
+from struct import *
 import sys
 from typing import Optional
 from math import isfinite
 
 from .trackpoint import AQ_NS, Segment, TrackPoint, decode_network, parse_satellites
 from .contours import build_accuracy_contours
+from .geojson import append_geojson, build_geojson_collection
 
 PROJECT_LINK = "https://github.com/k127/alp2gpx"
 
@@ -45,8 +48,24 @@ class alp2gpx(object):
     pretty: bool = False
     verbose: int = 0
     accuracy_contours: bool = False
+    geojson_output: Optional[str] = None
+    track_index: Optional[int] = None
+    geojson_append: bool = False
 
-    def __init__(self, inputfile, outputfile, include_extensions: bool = False, progress: bool = False, progress_interval: int = 200, pretty: bool = False, verbose: int = 0, accuracy_contours: bool = False):
+    def __init__(
+        self,
+        inputfile,
+        outputfile,
+        include_extensions: bool = False,
+        progress: bool = False,
+        progress_interval: int = 200,
+        pretty: bool = False,
+        verbose: int = 0,
+        accuracy_contours: bool = False,
+        geojson_output: Optional[str] = None,
+        track_index: Optional[int] = None,
+        geojson_append: bool = False,
+    ):
         self.inputfile = open(inputfile, "rb")
         self.fname = inputfile
 
@@ -57,6 +76,9 @@ class alp2gpx(object):
         self.pretty = pretty
         self.verbose = verbose
         self.accuracy_contours = accuracy_contours
+        self.geojson_output = geojson_output
+        self.track_index = track_index
+        self.geojson_append = geojson_append
         self.accuracy_left = []
         self.accuracy_right = []
 
@@ -589,6 +611,32 @@ class alp2gpx(object):
             return None
         return d.strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    def _build_track_labels(self):
+        tsdebut = self.time_of_first_location()
+        if not self.metadata.get('name'):
+            name = tsdebut.strftime("%Y-%m-%d %H:%M:%S")
+            filename = tsdebut.strftime("%y-%m-%d")
+        else:
+            name = tsdebut.strftime("%Y-%m-%d %H:%M:%S") + ' ' + self.metadata.get('name')
+            filename = tsdebut.strftime("%y-%m-%d") + ' ' + self.metadata.get('name')
+
+            # suppress characters not permitted in filename
+            for i in [';', ':', '!', "*", '/', '\\', '.', ','] :
+                filename = filename.replace(i, '-')
+
+            # suppress trailing space
+            filename = filename.strip()
+        return name, filename
+
+    def _clean_meta(self, meta: dict) -> dict:
+        cleaned = {}
+        for key, value in (meta or {}).items():
+            if isinstance(value, bytes):
+                cleaned[key] = base64.b64encode(value).decode("ascii")
+            else:
+                cleaned[key] = value
+        return cleaned
+
     def _build_extensions(self, trkpoint: TrackPoint):
         if not self.include_extensions or not trkpoint.has_extensions():
             return None
@@ -659,22 +707,7 @@ class alp2gpx(object):
             </trkseg></trk>
         </gpx>
         '''
-        tsdebut = self.time_of_first_location()
-        if not self.metadata.get('name'):
-            name = tsdebut.strftime("%Y-%m-%d %H:%M:%S")
-            filename = tsdebut.strftime("%y-%m-%d")
-        else:
-            name = tsdebut.strftime("%Y-%m-%d %H:%M:%S") + ' ' + self.metadata.get('name')
-            filename = tsdebut.strftime("%y-%m-%d") + ' ' + self.metadata.get('name')
-
-            # suppress characters not permitted in filename
-            for i in [';', ':', '!', "*", '/', '\\', '.', ','] :
-                filename = filename.replace(i, '-')
-
-            # suppress trailing space
-            filename = filename.strip()
-            
-        # print('Name:', name)
+        name, filename = self._build_track_labels()
         
         attrs = {"xmlns": "http://www.topografix.com/GPX/1/1", "version": "1.1", "creator": "Alp2gpx"}
         if self.include_extensions:
@@ -746,6 +779,30 @@ class alp2gpx(object):
                 pass
 
         tree.write(self.outputfile, encoding='utf-8', xml_declaration=True)
+
+    def build_geojson_collection(self, track_index: Optional[int] = None) -> dict:
+        name, _ = self._build_track_labels()
+        idx = track_index if track_index is not None else self.track_index
+        return build_geojson_collection(
+            track_name=name,
+            track_file=self.fname,
+            segments=self.segments or [],
+            format_time=self._format_time,
+            file_version=self.fileVersion,
+            track_index=idx,
+        )
+
+    def write_geojson(self, output_path: str, track_index: Optional[int] = None):
+        collection = self.build_geojson_collection(track_index=track_index)
+        out_path = os.path.expanduser(output_path)
+        if self.geojson_append:
+            append_geojson(Path(out_path), collection, pretty=self.pretty)
+        else:
+            with open(out_path, "w", encoding="utf-8") as fh:
+                if self.pretty:
+                    json.dump(collection, fh, ensure_ascii=False, indent=2)
+                else:
+                    json.dump(collection, fh, ensure_ascii=False, separators=(",", ":"))
         
         
     def parse_trk(self):
@@ -801,7 +858,6 @@ class alp2gpx(object):
             self.metadata = self._get_metadata(self.fileVersion)
             self.waypoints = self._get_waypoints()
             self.segments = self._get_segments(self.fileVersion)
-            self.write_xml()
         else:            
             # read sumary data
             self.inputfile.seek(8)
@@ -825,11 +881,13 @@ class alp2gpx(object):
 
             # read track
             self.segments = self._get_segments(self.fileVersion)
-            
-            self.write_xml()
+
+        self.write_xml()
+        if self.geojson_output:
+            self.write_geojson(self.geojson_output, track_index=self.track_index)
         #self.inputfile.seek(0)
    
-    
+   
     def parse_ldk(self):
         # - int       application specific magic number
         # - int       archive version

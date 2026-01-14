@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>alp2gpx GeoJSON Viewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: rgba(23, 29, 38, 0.9);
+      --text: #eef3f8;
+      --muted: #8aa2c2;
+      --accent: #4dd7c0;
+      --accent-2: #f4b73d;
+      --danger: #ef476f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Space Grotesk", "Inter", system-ui, sans-serif;
+      background: radial-gradient(circle at 20% 20%, rgba(77, 215, 192, 0.12), transparent 25%), radial-gradient(circle at 80% 0%, rgba(244, 183, 61, 0.1), transparent 25%), var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+    header {
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .title {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.2rem;
+      letter-spacing: 0.5px;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    #map {
+      height: calc(100vh - 96px);
+      width: 100%;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .panel {
+      position: fixed;
+      top: 14px;
+      right: 14px;
+      width: 310px;
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+      backdrop-filter: blur(6px);
+      z-index: 1000;
+    }
+    .panel h2 {
+      margin: 0 0 10px 0;
+      font-size: 1rem;
+      color: var(--text);
+    }
+    .panel .hint {
+      color: var(--muted);
+      font-size: 0.85rem;
+      line-height: 1.3;
+      margin-bottom: 10px;
+    }
+    label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+    input[type="file"] {
+      width: 100%;
+      color: var(--text);
+      padding: 8px 0;
+    }
+    .controls {
+      display: grid;
+      gap: 8px;
+      margin: 12px 0;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 999px;
+      color: var(--text);
+      font-size: 0.85rem;
+      margin-right: 6px;
+    }
+    .status {
+      margin-top: 8px;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    a {
+      color: var(--accent);
+    }
+    .leaflet-popup-content {
+      font-size: 0.92rem;
+      color: #1b2838;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .legend .swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      margin-right: 6px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">
+      <h1>alp2gpx GeoJSON viewer</h1>
+      <span class="subtitle">drop a GeoJSON from <code>--points-geojson</code> or keep <code>points.geojson</code> nearby</span>
+    </div>
+    <div class="pill">AQ extras → tooltips</div>
+  </header>
+  <div id="map"></div>
+
+  <div class="panel">
+    <h2>Load data</h2>
+    <div class="hint">1) If <code>points.geojson</code> sits next to this file, it will load automatically.<br/>2) Otherwise, pick a file below.</div>
+    <input type="file" id="fileInput" accept=".geojson,application/geo+json,application/json" />
+    <div class="controls">
+      <label><input type="checkbox" id="toggleLines" checked />Track lines</label>
+      <label><input type="checkbox" id="togglePoints" checked />Points</label>
+      <label><input type="checkbox" id="toggleAccuracy" checked />Accuracy rings (if available)</label>
+    </div>
+    <div class="legend">
+      <div class="pill"><span class="swatch" style="background:#4dd7c0;"></span>line</div>
+      <div class="pill"><span class="swatch" style="background:#f4b73d;"></span>point</div>
+      <div class="pill"><span class="swatch" style="background:#ef476f;"></span>accuracy</div>
+    </div>
+    <div class="status" id="status">Waiting for data…</div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    const statusEl = document.getElementById("status");
+    const toggleLines = document.getElementById("toggleLines");
+    const togglePoints = document.getElementById("togglePoints");
+    const toggleAccuracy = document.getElementById("toggleAccuracy");
+    const fileInput = document.getElementById("fileInput");
+
+    const map = L.map("map", {
+      zoomSnap: 0.25,
+      worldCopyJump: true,
+    }).setView([0, 0], 2);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map);
+
+    let lineLayer = L.geoJSON(null, {
+      style: () => ({ color: "#4dd7c0", weight: 3, opacity: 0.9 })
+    }).addTo(map);
+    let pointLayer = L.geoJSON(null, {
+      pointToLayer: (feature, latlng) => {
+        const accuracy = feature.properties?.accuracy;
+        const radius = Math.min(10, Math.max(4, (accuracy || 0) / 3));
+        return L.circleMarker(latlng, {
+          radius: radius,
+          color: "#0b1722",
+          fillColor: "#f4b73d",
+          fillOpacity: 0.8,
+          weight: 1,
+        });
+      },
+      onEachFeature: (feature, layer) => {
+        layer.bindPopup(buildPopup(feature.properties));
+      }
+    }).addTo(map);
+    let accuracyLayer = L.layerGroup().addTo(map);
+
+    function buildPopup(props = {}) {
+      const parts = [];
+      if (props.time) parts.push(`<strong>Time:</strong> ${props.time}`);
+      if (props.elevation !== undefined) parts.push(`<strong>Elevation:</strong> ${props.elevation} m`);
+      if (props.accuracy !== undefined) parts.push(`<strong>Accuracy:</strong> ±${props.accuracy} m`);
+      if (props.accuracyVertical !== undefined) parts.push(`<strong>Vertical acc:</strong> ±${props.accuracyVertical} m`);
+      if (props.pressure !== undefined) parts.push(`<strong>Pressure:</strong> ${props.pressure} kPa`);
+      if (props.battery !== undefined) parts.push(`<strong>Battery:</strong> ${props.battery}%`);
+      const sats = ["satGps", "satGlo", "satBds", "satGal"].map(k => props[k]).filter(v => v !== undefined);
+      if (sats.length) {
+        parts.push(`<strong>Satellites:</strong> GPS ${props.satGps ?? "–"}, GLONASS ${props.satGlo ?? "–"}, BEIDOU ${props.satBds ?? "–"}, GALILEO ${props.satGal ?? "–"}`);
+      }
+      if (props.networkType || props.networkSignalDbm !== undefined || props.networkSignalPercent !== undefined) {
+        parts.push(`<strong>Network:</strong> ${props.networkType ?? "?"} (${props.networkSignalDbm ?? "?"} dBm / ${props.networkSignalPercent ?? "?"}%)`);
+      }
+      if (props.inclination !== undefined) parts.push(`<strong>Inclination:</strong> ${props.inclination}°`);
+      if (props.magneticField !== undefined) parts.push(`<strong>Magnetic:</strong> ${props.magneticField} nT`);
+      if (props.segmentIndex !== undefined && props.pointIndex !== undefined) {
+        parts.push(`<strong>Segment/point:</strong> ${props.segmentIndex} / ${props.pointIndex}`);
+      }
+      if (!parts.length) return "<em>No extras on this point.</em>";
+      return parts.join("<br />");
+    }
+
+    function setStatus(text, isError = false) {
+      statusEl.textContent = text;
+      statusEl.style.color = isError ? "var(--danger)" : "var(--muted)";
+    }
+
+    function clearLayers() {
+      lineLayer.clearLayers();
+      pointLayer.clearLayers();
+      accuracyLayer.clearLayers();
+    }
+
+    function toLatLngs(coords) {
+      return coords.map(c => [c[1], c[0]]);
+    }
+
+    function drawAccuracy(feature) {
+      const acc = feature.properties?.accuracy;
+      if (!acc || !toggleAccuracy.checked) return;
+      const [lon, lat] = feature.geometry.coordinates;
+      const ring = L.circle([lat, lon], {
+        radius: acc,
+        color: "#ef476f",
+        weight: 1,
+        fillColor: "#ef476f",
+        fillOpacity: 0.08,
+      });
+      ring.addTo(accuracyLayer);
+    }
+
+    function loadGeoJSON(data) {
+      clearLayers();
+      const fc = data.type === "FeatureCollection" ? data : null;
+      if (!fc) {
+        setStatus("Invalid GeoJSON (expected FeatureCollection)", true);
+        return;
+      }
+      lineLayer.addData(fc.features.filter(f => f.geometry?.type === "LineString"));
+      pointLayer.addData(fc.features.filter(f => f.geometry?.type === "Point"));
+      fc.features.filter(f => f.geometry?.type === "Point").forEach(drawAccuracy);
+
+      const bounds = lineLayer.getBounds();
+      if (bounds.isValid()) {
+        map.fitBounds(bounds.pad(0.1));
+      } else {
+        map.setView([0, 0], 2);
+      }
+      const totalPoints = fc.features.filter(f => f.geometry?.type === "Point").length;
+      setStatus(`Loaded ${totalPoints} points${fc.name ? ` · ${fc.name}` : ""}`);
+    }
+
+    async function fetchDefault() {
+      try {
+        const res = await fetch("points.geojson", { cache: "no-cache" });
+        if (!res.ok) throw new Error(res.statusText);
+        const data = await res.json();
+        loadGeoJSON(data);
+      } catch (err) {
+        setStatus("points.geojson not found – pick a file below.");
+      }
+    }
+
+    fileInput.addEventListener("change", (evt) => {
+      const file = evt.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result);
+          loadGeoJSON(data);
+        } catch (err) {
+          setStatus("Could not parse file as GeoJSON", true);
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    toggleLines.addEventListener("change", () => {
+      if (toggleLines.checked) {
+        lineLayer.addTo(map);
+      } else {
+        map.removeLayer(lineLayer);
+      }
+    });
+    togglePoints.addEventListener("change", () => {
+      if (togglePoints.checked) {
+        pointLayer.addTo(map);
+      } else {
+        map.removeLayer(pointLayer);
+      }
+    });
+    toggleAccuracy.addEventListener("change", () => {
+      if (!toggleAccuracy.checked) {
+        accuracyLayer.clearLayers();
+      } else {
+        // redraw accuracy rings for currently loaded points
+        const pts = [];
+        pointLayer.eachLayer(l => {
+          if (l.feature) pts.push(l.feature);
+        });
+        accuracyLayer.clearLayers();
+        pts.forEach(drawAccuracy);
+      }
+    });
+
+    fetchDefault();
+  </script>
+</body>
+</html>

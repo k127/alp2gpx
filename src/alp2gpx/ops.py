@@ -6,8 +6,10 @@ import os
 from pathlib import Path
 from struct import unpack
 from typing import Iterable, Tuple
+import json
 
 from .alp2gpx import alp2gpx
+from .geojson import append_geojson
 
 
 def find_tracks(base_dir: Path) -> list[Path]:
@@ -83,8 +85,26 @@ def batch_convert(
     pretty: bool = False,
     verbose: int = 0,
     accuracy_contours: bool = False,
+    geojson: Path | None = None,
+    geojson_append: bool = False,
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
+    geojson_dir: Path | None = None
+    geojson_file: Path | None = None
+    merged_features = []
+    track_count = 0
+    if geojson:
+        if geojson.exists() and geojson.is_dir():
+            geojson_dir = geojson
+        elif geojson.suffix:
+            geojson_file = geojson
+        else:
+            geojson_dir = geojson
+        if geojson_dir:
+            geojson_dir.mkdir(parents=True, exist_ok=True)
+        if geojson_file:
+            geojson_file.parent.mkdir(parents=True, exist_ok=True)
+
     for idx, path in enumerate(tracks, start=1):
         version, header = read_header(path)
         if summary_only and verbose > 0 and version and version <= 3:
@@ -101,9 +121,41 @@ def batch_convert(
                 continue
 
         out_path = out_dir / f"{path.stem}.gpx"
-        result = alp2gpx(str(path), str(out_path), include_extensions=include_extensions, pretty=pretty, verbose=verbose, accuracy_contours=accuracy_contours)
+        geojson_path = None
+        if geojson_dir:
+            geojson_path = geojson_dir / f"{path.stem}.geojson"
+        result = alp2gpx(
+            str(path),
+            str(out_path),
+            include_extensions=include_extensions,
+            pretty=pretty,
+            verbose=verbose,
+            accuracy_contours=accuracy_contours,
+            geojson_output=str(geojson_path) if geojson_path else None,
+            track_index=idx,
+            geojson_append=geojson_append,
+        )
+        if geojson_file:
+            collection = result.build_geojson_collection(track_index=idx)
+            merged_features.extend(collection.get("features", []))
         segments = len(result.segments or [])
         points = sum(len(seg.points) for seg in result.segments or [])
         print(f"     -> {out_path} (segments={segments}, points={points}, version={result.fileVersion})")
+        track_count += 1
         if limit and idx >= limit:
             break
+    if geojson_file and merged_features:
+        merged = {
+            "type": "FeatureCollection",
+            "name": geojson_file.stem,
+            "source": {"batch": True, "tracks": track_count},
+            "features": merged_features,
+        }
+        if geojson_append:
+            append_geojson(geojson_file, merged, pretty=pretty)
+        else:
+            with geojson_file.open("w", encoding="utf-8") as fh:
+                if pretty:
+                    json.dump(merged, fh, ensure_ascii=False, indent=2)
+                else:
+                    json.dump(merged, fh, ensure_ascii=False, separators=(",", ":"))

@@ -90,6 +90,17 @@ def main() -> None:
         help="Emit left/right accuracy contour tracks offset by horizontal accuracy.",
     )
     parser.add_argument(
+        "--points-geojson",
+        type=Path,
+        default=None,
+        help="Write GeoJSON with trackpoints and extras (file or directory; file merges batch outputs).",
+    )
+    parser.add_argument(
+        "--append-points-geojson",
+        action="store_true",
+        help="Append to an existing GeoJSON file instead of overwriting.",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="count",
@@ -117,6 +128,8 @@ def main() -> None:
             pretty=args.pretty,
             verbose=args.verbose,
             accuracy_contours=args.accuracy_contours,
+            geojson=args.points_geojson,
+            geojson_append=args.append_points_geojson,
         )
         return
 
@@ -138,7 +151,14 @@ def main() -> None:
     if args.output is None:
         args.output = _default_output(args.input)
 
-    run_kwargs = dict(include_extensions=args.aq_extensions, progress=args.progress, pretty=args.pretty, accuracy_contours=args.accuracy_contours)
+    run_kwargs = dict(
+        include_extensions=args.aq_extensions,
+        progress=args.progress,
+        pretty=args.pretty,
+        accuracy_contours=args.accuracy_contours,
+        geojson_output=str(args.points_geojson) if args.points_geojson else None,
+        geojson_append=args.append_points_geojson,
+    )
 
     if args.profile_out:
         args.profile_out.parent.mkdir(parents=True, exist_ok=True)
